@@ -93,7 +93,9 @@ type Record struct {
 
 func (r *Record) Hash() ([64]byte, error) {
 	sha := sha512.New()
-	_, err := sha.Write(r.Data[:])
+	d := r.Data[:]
+	d = append(d, r.Owner[:]...)
+	_, err := sha.Write(d)
 
 	if err != nil {
 		return [64]byte{}, err
@@ -105,6 +107,10 @@ func (r *Record) Hash() ([64]byte, error) {
 	copy(key[:], sum[:64])
 
 	return key, nil
+}
+
+func (r *Record) ValidateOwnership(token [64]byte) bool {
+	return token == r.Owner
 }
 
 type Database struct {
@@ -148,13 +154,14 @@ func (d *Database) Hibernate() {
 
 	d.lookupTable = map[[64]byte]uint32{}
 	d.records = make([]*Record, 0)
+	println(d.name + " hibernated")
 }
 
 func (d *Database) WakeUp() {
-	d.LoadFromDisk(d.name)
-	d.cancelFunc = commitToDiskJob(d)
+	d.Init()
 
 	d.isHibernated = false
+	println(d.name + " woken up")
 }
 
 func (d *Database) Init() {

@@ -59,7 +59,7 @@ func (d *DBCommand) Run() {
 	registry := d.GetString("registry", "")
 
 	if registry == "" {
-		d.Logger.Fatal("No registry address provided, a cluster can't operate withput a registry!!")
+		d.Logger.LogString("No registry address provided, cluster features not available")
 	}
 
 	d.Logger.LogString(fmt.Sprintf("Starting a cluster '%s' with %d nodes on port %d", name, nodes, port))
@@ -75,42 +75,69 @@ func (d *DBCommand) Run() {
 	}
 
 	listener.Start(func(conn net.Conn) {
-		cancel := utils.Timeout(func() {
-			conn.Write([]byte("Timed out"))
-			conn.Close()
-		}, 10*time.Second)
+		for true {
+			cancel := utils.Timeout(func() {
+				conn.Write([]byte("Timed out"))
+				conn.Close()
+			}, 10*time.Second)
 
-		pkt := protocol.ClusterAuthPacketDefinition.ReadFromConn(conn).Unwrap()
+			crud := protocol.ClusterCRUDPacketDefinition.ReadFromConn(conn).Unwrap()
 
-		cancel()
+			cancel()
 
-		ok := protocol.ClusterAuthPacketDefinition.Validate(&pkt)
+			ok := protocol.ClusterCRUDPacketDefinition.Validate(&crud)
 
-		if !ok {
-			conn.Write([]byte{0})
-			return
+			if !ok {
+				conn.Write([]byte{0})
+				continue
+			}
+
+			var record *cluster.Record
+
+			if crud.Type == protocol.CLUSTER_WRITE_REQ {
+				record = &cluster.Record{}
+				record.Permission = crud.Permission
+				record.Data = crud.Data
+				record.Owner = crud.OwnerToken
+
+				db, hash := d.cluster.AddRecord(record)
+
+				r := []byte{protocol.CLUSTER_WRITE_RES, 1}
+				r = append(r, byte(db))
+				r = append(r, hash[:]...)
+
+				conn.Write(r)
+			} else if crud.Type == protocol.CLUSTER_DELETE_REQ {
+				key := [64]byte{}
+				copy(key[:], crud.Data[:64])
+
+				record = d.cluster.GetRecord(key)
+
+				if record == nil {
+					conn.Write([]byte{protocol.CLUSTER_DELETE_RES, 0})
+					continue
+				}
+
+				if !record.ValidateOwnership(crud.OwnerToken) {
+					conn.Write([]byte{protocol.CLUSTER_DELETE_RES, 0})
+					continue
+				}
+
+				d.cluster.DeleteRecord(key)
+				conn.Write([]byte{protocol.CLUSTER_DELETE_RES, 1})
+			} else if crud.Type == protocol.CLUSTER_FETCH_REQ {
+				key := [64]byte{}
+				copy(key[:], crud.Data[:64])
+
+				record = d.cluster.GetRecord(key)
+				r := []byte{protocol.CLUSTER_WRITE_RES, 1}
+				r = append(r, record.Data[:]...)
+				conn.Write(r)
+			} else { // No such thing as an update. Need one? delete the old record then create a new one
+				conn.Write([]byte{0})
+			}
+
+			repr.Println(crud.Data[:10], crud.OwnerToken[:10], crud.Type)
 		}
-
-		repr.Println(pkt.RSAKey[:10], pkt.Type)
-
-		cancel = utils.Timeout(func() {
-			conn.Write([]byte("Timed out"))
-			conn.Close()
-		}, 10*time.Second)
-
-		crud := protocol.ClusterCRUDPacketDefinition.ReadFromConn(conn).Unwrap()
-
-		cancel()
-
-		ok = protocol.ClusterCRUDPacketDefinition.Validate(&crud)
-
-		if !ok {
-			conn.Write([]byte{0})
-			return
-		}
-
-		repr.Println(crud.Data[:10], crud.Type)
-
-		conn.Write([]byte{0})
 	})
 }

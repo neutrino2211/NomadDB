@@ -69,6 +69,10 @@ func (c *Cluster) AddRecord(record *Record) (int, [64]byte) {
 		}
 	}
 
+	if minDb.isHibernated {
+		minDb.WakeUp()
+	}
+
 	return minIndex, minDb.AddRecord(record)
 }
 

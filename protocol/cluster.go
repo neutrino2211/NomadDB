@@ -6,8 +6,8 @@ const CLUSTER_AUTH_RES = 0b00100001
 const CLUSTER_FETCH_REQ = 0b00100010
 const CLUSTER_FETCH_RES = 0b00100011
 
-const CLUSTER_UPDATE_REQ = 0b00100100
-const CLUSTER_UPDATE_RES = 0b00100101
+const CLUSTER_WRITE_REQ = 0b00100100
+const CLUSTER_WRITE_RES = 0b00100101
 
 const CLUSTER_DELETE_REQ = 0b00100110
 const CLUSTER_DELETE_RES = 0b00100111
@@ -20,8 +20,8 @@ func AuthPktValidator(c *ClusterAuthPacket) bool {
 func ClusterCRUDPacketValidator(c *ClusterCRUDPacket) bool {
 	return c.Type == CLUSTER_FETCH_REQ ||
 		c.Type == CLUSTER_FETCH_RES ||
-		c.Type == CLUSTER_UPDATE_REQ ||
-		c.Type == CLUSTER_UPDATE_RES ||
+		c.Type == CLUSTER_WRITE_REQ ||
+		c.Type == CLUSTER_WRITE_RES ||
 		c.Type == CLUSTER_DELETE_REQ ||
 		c.Type == CLUSTER_DELETE_RES
 }
@@ -32,8 +32,10 @@ type ClusterAuthPacket struct {
 }
 
 type ClusterCRUDPacket struct {
-	Type byte
-	Data [2048]byte
+	Type       byte
+	OwnerToken [64]byte
+	Data       [2048]byte
+	Permission byte
 }
 
 var ClusterAuthPacketDefinition = GeneratePacketDefinition(AuthPktValidator)
