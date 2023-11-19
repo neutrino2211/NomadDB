@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"strconv"
 	"time"
@@ -55,7 +54,7 @@ func (d *DBCommand) Run() {
 	ip := d.GetString("ipaddress", "0.0.0.0")
 	name := d.GetString("name", "cluster")
 	nodes := d.GetUint("size", 10)
-	port := d.GetUint("port", 1000+(uint(rand.Uint64())%55535))
+	port := d.GetUint("port", 13564)
 	registry := d.GetString("registry", "")
 
 	if registry == "" {
@@ -75,7 +74,7 @@ func (d *DBCommand) Run() {
 	}
 
 	listener.Start(func(conn net.Conn) {
-		for true {
+		for {
 			cancel := utils.Timeout(func() {
 				conn.Write([]byte("Timed out"))
 				conn.Close()
@@ -102,6 +101,8 @@ func (d *DBCommand) Run() {
 
 				db, hash := d.cluster.AddRecord(record)
 
+				fmt.Println("WRITE:", hash)
+
 				r := []byte{protocol.CLUSTER_WRITE_RES, 1}
 				r = append(r, byte(db))
 				r = append(r, hash[:]...)
@@ -110,6 +111,8 @@ func (d *DBCommand) Run() {
 			} else if crud.Type == protocol.CLUSTER_DELETE_REQ {
 				key := [64]byte{}
 				copy(key[:], crud.Data[:64])
+
+				fmt.Println("DELETE:", key)
 
 				record = d.cluster.GetRecord(key)
 
@@ -129,9 +132,17 @@ func (d *DBCommand) Run() {
 				key := [64]byte{}
 				copy(key[:], crud.Data[:64])
 
+				fmt.Println("FETCH:", key)
+
 				record = d.cluster.GetRecord(key)
-				r := []byte{protocol.CLUSTER_WRITE_RES, 1}
-				r = append(r, record.Data[:]...)
+				r := []byte{protocol.CLUSTER_FETCH_RES}
+
+				if record == nil {
+					r = append(r, 0)
+				} else {
+					r = append(r, 1)
+					r = append(r, record.Data[:]...)
+				}
 				conn.Write(r)
 			} else { // No such thing as an update. Need one? delete the old record then create a new one
 				conn.Write([]byte{0})

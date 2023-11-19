@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/neutrino2211/go-option"
 )
 
 const MAX_RECORD_LEN = 0xffffffff
@@ -81,7 +83,8 @@ func byteToUint64(data []byte) uint64 {
 }
 
 func removeRecord(slice []*Record, s int) []*Record {
-	return append(slice[:s], slice[s+1:]...)
+	slice[s] = &Record{}
+	return slice
 }
 
 type Record struct {
@@ -115,6 +118,7 @@ func (r *Record) ValidateOwnership(token [64]byte) bool {
 
 type Database struct {
 	records      []*Record
+	deletedList  []uint32
 	lookupTable  map[[64]byte]uint32
 	isHibernated bool
 	name         string
@@ -128,9 +132,9 @@ func (d *Database) coldLookup(hash [64]byte) (bool, error) {
 		return false, err
 	}
 
-	lookupLen := byteToUint64(data[12:20])
+	lookupLen := byteToUint64(data[4:12])
 
-	lookupTableBytes := data[20 : 20+lookupLen]
+	lookupTableBytes := data[28 : 28+lookupLen]
 
 	err = gob.NewDecoder(bytes.NewBuffer(lookupTableBytes)).Decode(&d.lookupTable)
 
@@ -194,7 +198,12 @@ func (d *Database) AddRecord(r *Record) [64]byte {
 }
 
 func (d *Database) GetRecord(hash [64]byte) *Record {
+	if d.isHibernated {
+		d.WakeUp()
+	}
+
 	if index, ok := d.lookupTable[hash]; ok {
+		fmt.Println(d.records)
 		return d.records[index]
 	}
 
@@ -258,59 +267,53 @@ func (d *Database) Serialize() []byte {
 	var buf = []byte{'x', 'H', 'D', 'B'} // Magic bytes
 	var mapBytesBuffer = new(bytes.Buffer)
 	var recordBytesBuffer = new(bytes.Buffer)
+	var deletedListBytesBuffer = new(bytes.Buffer)
 
 	mapEncoder := gob.NewEncoder(mapBytesBuffer)
 	recordsEncoder := gob.NewEncoder(recordBytesBuffer)
-	err := mapEncoder.Encode(d.lookupTable)
-	err2 := recordsEncoder.Encode(d.records)
+	deletedListEncoder := gob.NewEncoder(deletedListBytesBuffer)
 
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to serialize database")
-		panic(err)
-	}
+	option.Some(mapEncoder.Encode(d.lookupTable)).ExpectNil("Failed to serialize database: [lookupTable]")
+	option.Some(recordsEncoder.Encode(d.records)).ExpectNil("Failed to serialize database: [records]")
+	option.Some(deletedListEncoder.Encode(d.deletedList)).ExpectNil("Failed to serialize database: [deletedList]")
 
-	if err2 != nil {
-		fmt.Fprintln(os.Stderr, "Failed to serialize database")
-		panic(err2)
-	}
+	lookupSize := mapBytesBuffer.Len()              // Size of lookup table
+	recordsSize := recordBytesBuffer.Len()          // Size of records
+	deletedListSize := deletedListBytesBuffer.Len() // Size of deleted list
 
-	recordsSize := recordBytesBuffer.Len() // Size of records
-	lookupSize := mapBytesBuffer.Len()     // Size of lookup table
-
-	buf = append(buf, uint64ToByte(uint64(recordsSize))...) // Encode the record size
 	buf = append(buf, uint64ToByte(uint64(lookupSize))...)  // Encode lookup table size
+	buf = append(buf, uint64ToByte(uint64(recordsSize))...) // Encode the record size
+	buf = append(buf, uint64ToByte(uint64(deletedListSize))...)
 
 	buf = append(buf, mapBytesBuffer.Bytes()...)    // Add encoded lookup table
 	buf = append(buf, recordBytesBuffer.Bytes()...) // Add encoded records
+	buf = append(buf, deletedListBytesBuffer.Bytes()...)
 
 	return buf
 }
 
 func (d *Database) Deserialize(data []byte) {
-	lookupLen := byteToUint64(data[12:20])
+	// 0..3 is magic bytes, 4..11 is lookup len in bytes, 12..20 is records table in bytes
+	lookupLen := byteToUint64(data[4:12])
+	recordsLen := byteToUint64(data[12:20])
 
-	lookupTableBytes := data[20 : 20+lookupLen]
-	recordsBytes := data[20+lookupLen:]
+	lookupTableBytes := data[28 : 28+lookupLen]
+	recordsBytes := data[28+lookupLen : 28+lookupLen+recordsLen]
+	deletedListBytes := data[28+lookupLen+recordsLen:]
 
 	lookupTableDecoder := gob.NewDecoder(bytes.NewBuffer(lookupTableBytes))
 	recordDecoder := gob.NewDecoder(bytes.NewBuffer(recordsBytes))
+	deletedListDecoder := gob.NewDecoder(bytes.NewBuffer(deletedListBytes))
 
 	baseRecords := []*Record{}
 	baseLookupTable := make(map[[64]byte]uint32)
+	baseDeletedList := []uint32{}
 
-	err := recordDecoder.Decode(&baseRecords)
-	err2 := lookupTableDecoder.Decode(&baseLookupTable)
-
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to deserialize database")
-		panic(err)
-	}
-
-	if err2 != nil {
-		fmt.Fprintln(os.Stderr, "Failed to deserialize database")
-		panic(err2)
-	}
+	option.Some(lookupTableDecoder.Decode(&baseLookupTable)).ExpectNil("Failed to deserialize database: [lookupTable]")
+	option.Some(recordDecoder.Decode(&baseRecords)).ExpectNil("Failed to deserialize database: [records]")
+	option.Some(deletedListDecoder.Decode(&baseDeletedList)).ExpectNil("Failed to deserialize database: [deletedList]")
 
 	d.records = baseRecords
 	d.lookupTable = baseLookupTable
+	d.deletedList = baseDeletedList
 }
