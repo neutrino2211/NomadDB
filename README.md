@@ -30,7 +30,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/neutrino2211/NomadDB">
-    <img src="images/Nomad DB.png" alt="Logo" height="80">
+    <img src="docs/Nomad DB.png" alt="Logo" height="80">
   </a>
 
 <h3 align="center">Nomad DB</h3>
@@ -79,7 +79,7 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-[Nomad Architecture][product-screenshot]
+[![Nomad DB Architecture][product-screenshot]][product-screenshot]
 
 A decentralised P2P database format designed with an emphasis on ownership and anonymity which aims to support Individual and Communal instances through shared data with the hope of fostering a community of apps that store and share data on the network.
 
@@ -229,7 +229,8 @@ Project Link: [https://github.com/neutrino2211/NomadDB](https://github.com/neutr
 [issues-shield]: https://img.shields.io/github/issues/neutrino2211/NomadDB.svg?style=for-the-badge
 [issues-url]: https://github.com/neutrino2211/NomadDB/issues
 [license-shield]: https://img.shields.io/github/license/neutrino2211/NomadDB.svg?style=for-the-badge
-[license-url]: https://github.com/neutrino2211/NomadDB/blob/master/LICENSE.txt
+[license-url]: https://github.com/neutrino2211/NomadDB/blob/master/LICENSE
+[arch-url]: https://github.com/neutrino2211/NomadDB/blob/master/docs/arch.png
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/linkedin_username
 [product-screenshot]: docs/arch.png
